@@ -5,7 +5,7 @@ from itertools import permutations
 import numpy as np
 #======================= read data ============================
 def data_ready(): 
-    data = pd.read_csv("C:\\ICF_AutoCapsule_disabled\\R\\testdata_ball_GaussNoise_HighLevel_ver2.csv")
+    data = pd.read_csv("C:\\Users\\mai\\Downloads\\rToPy-master\\testdata_ball_GaussNoise_HighLevel_ver2.csv")
     # select data
     Xdata = data.iloc[:,0:7] 
     Ydata = data.iloc[:,17]
@@ -66,12 +66,16 @@ def make_product(Xsymbol_Xdata):
 
     count_row = len(product_term_name) 
 
-    for nn in range(0,count_row+1):
+    for nn in range(0, count_row):
         product = Xsymbol_Xdata.iloc[:, Xsymbol_Xdata.columns.get_loc(str(product_term_name[nn,0]))]*Xsymbol_Xdata.iloc[:, Xsymbol_Xdata.columns.get_loc(str(product_term_name[nn,1]))]
+        #print(np.array(product))
+        #print(np.array(product_term))
         #combination product_term and product
-        product_term = np.insert(product_term, [nn+1], product, axis=1)
-        print(product_term)
-
+        a = np.array(product_term)
+        b = np.array(product)
+        product_term = np.concatenate((a,b[:,None]),axis=1)
+    
+    product_term = product_term[ : ,1:]
     print(product_term)
     #create name column
     nameofproduct_term = product_term.columns.values.tolist()
@@ -85,7 +89,7 @@ def make_quotient(Xsymbol_Xdata):
     quotient_term = []
         # For input 
     for i in range(Xsymbol_Xdata.shape[0]):          # A for loop for row entries 
-        a =[] 
+        a = [] 
         # A for loop for column entries 
         a.append(0) 
         quotient_term.append(a) 
