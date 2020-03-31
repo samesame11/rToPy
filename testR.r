@@ -27,6 +27,7 @@ data_ready = function()
   Xdata = data[,1:7]
   Ydata = data[,18]
   XYdata = cbind(Xdata,Ydata)
+  write.csv(XYdata, "XYdata.csv")
   
   #filterしたい時はここをいじる（異常値が有ったりする行を消す）
   XYdata = filter(XYdata, Ydata<0.5)

@@ -3,22 +3,18 @@ import pandas as pd
 from itertools import combinations 
 from itertools import permutations 
 import numpy as np
+import csv
 
+from pyensae.languages import r2python
 import glmnet_python
 from glmnet import glmnet
-
-import scipy, importlib, pprint, matplotlib.pyplot as plt, warnings
-from glmnet import glmnet; from glmnetPlot import glmnetPlot
-from glmnetPrint import glmnetPrint; from glmnetCoef import glmnetCoef; from glmnetPredict import glmnetPredict
-from cvglmnet import cvglmnet; from cvglmnetCoef import cvglmnetCoef
-from cvglmnetPlot import cvglmnetPlot; from cvglmnetPredict import cvglmnetPredict
 #======================= read data ============================
 def data_ready(): 
     data = pd.read_csv("C:\\ICF_AutoCapsule_disabled\\R\\testdata_ball_GaussNoise_HighLevel_ver2.csv")
     # select data
     Xdata = data.iloc[:,0:7] 
     Ydata = data.iloc[:,17]
-
+    
     #find name of column
     nameofcolumnYdata = data.columns.values.tolist()
     
@@ -26,6 +22,8 @@ def data_ready():
     Xdata = pd.DataFrame(Xdata)
     Xdata[nameofcolumnYdata[17]] = Ydata
     XYdata = Xdata
+    
+    pd.DataFrame(np.array(XYdata)).to_csv("C:/ICF_AutoCapsule_disabled/R/file.csv")
 
     #filter
     XYdata = XYdata[XYdata.iloc[:, 7] <0.5]
@@ -237,29 +235,22 @@ def make_penalty_factor(new_Xdata, Xsymbol_Xdata_original):
    
     return(penalty_factor)
 #========================== 標準化した回帰係数を計算するfunction =================
-def make_std_coefficient(model, Xdata):
-    #TODO: variable
-    #interceptアリの時はこれも入れる
-	return(cf_std)
+#def make_std_coefficient(model, Xdata):
+#    #TODO: variable
+#    #interceptアリの時はこれも入れる
+#	return(cf_std)
 
-def make_std_coefficient_intercept(model, Xdata):
-    #TODO: variable
-    #interceptアリの時はこれも入れる
-	return(cf_std)
+#def make_std_coefficient_intercept(model, Xdata):
+#    #TODO: variable
+#    #interceptアリの時はこれも入れる
+#	return(cf_std)
 # normolize for python
 def nom(X, x_min, x_max):
             nom = (X-Ydata.min(axis=0))*(x_max-x_min)
             denom = X.max(axis=0) - X.min(axis=0)
             denom[denom==0] = 1
             return x_min + nom/denom 
-#========================================================================
-def nb(y=1930):
-    debut = 1816
-    MatDFemale = matrix(D . Female, nrow=111)
-    colnames(MatDFemale) .set(range((debut + 0), 198))
-    cly = range((y - debut + 1), 111)
-    deces = diag(MatDFemale[:, cly[set(cly) & set(range(1, 199))]])
-    return tuple(B . Female[B . Year == y], deces)
+
 #====== non-linear reccurent adaptive interpretable regression (NRAI regression) ======
 
 #------------------ input parameter -------------------------------------
@@ -399,7 +390,30 @@ if __name__ == "__main__":
                 #標準化係数でピックアップしたデータのみを使用して再度LASSO
                
                 #cross validation
-                fitLassoCV1 = glmnet(x = np.array(new_Xdata), y = np.array(Ydata), family = 'gaussian', 
-                                     alpha = 1, nlambda = 1000)
-                glmnetPrint(fit)
+                #FIXME:  create LassoCV
+                
+                rscript = """
+                cl = makeCluster(4)
+                registerDoParallel(cl) 
+                fitLassoCV1 = cv.glmnet(x = as.matrix(new_Xdata), y = as.matrix(Ydata), family ="gaussian", alpha = 1
+                                ,nfolds = 5, parallel=TRUE, standardize = TRUE, penalty.factor=penalty_factor
+                                ,thresh = 1E-7, maxit = 10^5, nlambda = 1000, intercept=FALSE, lambda.min.ratio = 0.00000001
+                        ,lambda = 2^(-40:5) )
+                stopCluster(cl) 
+                """
+                #print(r2python(rscript, pep8=True))
+                fitLassoCV1 = glmnet(x=np.array(new_Xdata),y=np.array(Ydata),
+                        alpha=1,
+                        standardize=True,
+                        penalty_factor=penalty_factor,
+                        thresh=1E-7,
+                        maxit=10 ** 5,
+                        nlambda=1000,
+                        intr=True)
+                print(fitLassoCV1)
+
+                
+                
+                
+
 
