@@ -3,9 +3,18 @@ import pandas as pd
 from itertools import combinations 
 from itertools import permutations 
 import numpy as np
+
+import glmnet_python
+from glmnet import glmnet
+
+import scipy, importlib, pprint, matplotlib.pyplot as plt, warnings
+from glmnet import glmnet; from glmnetPlot import glmnetPlot
+from glmnetPrint import glmnetPrint; from glmnetCoef import glmnetCoef; from glmnetPredict import glmnetPredict
+from cvglmnet import cvglmnet; from cvglmnetCoef import cvglmnetCoef
+from cvglmnetPlot import cvglmnetPlot; from cvglmnetPredict import cvglmnetPredict
 #======================= read data ============================
 def data_ready(): 
-    data = pd.read_csv("C:\\Users\\mai\\Downloads\\rToPy-master\\testdata_ball_GaussNoise_HighLevel_ver2.csv")
+    data = pd.read_csv("C:\\ICF_AutoCapsule_disabled\\R\\testdata_ball_GaussNoise_HighLevel_ver2.csv")
     # select data
     Xdata = data.iloc[:,0:7] 
     Ydata = data.iloc[:,17]
@@ -32,13 +41,12 @@ def data_ready():
         Xsymbol_each = "X"+str(ii)
         Xsymbol.append(Xsymbol_each)
     # print(Xsymbol)
-    
-    #combination
+
+    #combination [maxtrix table]
     nameofcolumnXYdata = XYdata.columns.values.tolist()
     dictOfNameXYdata = pd.DataFrame(nameofcolumnXYdata) 
     dictOfNameXYdata[''] = Xsymbol
     Xsymbol_and_DescriptorName = dictOfNameXYdata
-    # print(Xsymbol_and_DescriptorName)
 
     #create column name
     Xsymbol_Xdata_original = XYdata
@@ -62,163 +70,171 @@ def make_product(Xsymbol_Xdata):
     product_term = [0] * row
     for x in range (row):
         product_term[x] = [0] * cloumn
-    #for 0 - production_term_name
 
     count_row = len(product_term_name) 
 
     for nn in range(0, count_row):
         product = Xsymbol_Xdata.iloc[:, Xsymbol_Xdata.columns.get_loc(str(product_term_name[nn,0]))]*Xsymbol_Xdata.iloc[:, Xsymbol_Xdata.columns.get_loc(str(product_term_name[nn,1]))]
-        #print(np.array(product))
-        #print(np.array(product_term))
-        #combination product_term and product
+        #combination product_term and product [array]
         a = np.array(product_term)
         b = np.array(product)
         product_term = np.concatenate((a,b[:,None]),axis=1)
     
     product_term = product_term[ : ,1:]
-    print(product_term)
     #create name column
-    nameofproduct_term = product_term.columns.values.tolist()
-    product_term = product_term.rename(columns ={nameofproduct_term:"("+product_term_name[ :,0]+product_term_name[:, 1]+")"})
+    names = [] 
+    reshaped = product_term.reshape(len(Xsymbol_Xdata),count_row)
+    for n in range(0, count_row):
+        name = "".join(str(x) for x in product_term_name[n])
+        names.append("("+name+")")
+    product_term =  pd.DataFrame(reshaped, columns=names)
     return(product_term)
 #======================== 商の項を作る ================================
 def make_quotient(Xsymbol_Xdata):
    #find name of variable
     X_symbol_name = Xsymbol_Xdata.columns.values.tolist()
-    quotient_term_name = permutations(X_symbol_name,2)
-    quotient_term = []
-        # For input 
-    for i in range(Xsymbol_Xdata.shape[0]):          # A for loop for row entries 
-        a = [] 
-        # A for loop for column entries 
-        a.append(0) 
-        quotient_term.append(a) 
+    quotient_term_name = list(permutations(X_symbol_name, 2)) 
+    quotient_term_name = np.array(quotient_term_name)
+    # create matrix
+    row = len(Xsymbol_Xdata)
+    cloumn = 1
+    quotient_term = [0] * row
+    for x in range (row):
+        quotient_term[x] = [0] * cloumn
     
-    #FIXME: For printing the matrix was created for check if evrythinhs is okay gonna delete it
-    for i in range(Xsymbol_Xdata.shape[0]):  
-        print(quotient_term[i][1], end = " ") 
+    count_row = len(quotient_term_name) 
+     
+    for nn in range(0, count_row):
+        quotient = Xsymbol_Xdata.iloc[:, Xsymbol_Xdata.columns.get_loc(str(quotient_term_name[nn,0]))]/Xsymbol_Xdata.iloc[:, Xsymbol_Xdata.columns.get_loc(str(quotient_term_name[nn,1]))]
+        #combination product_term and product
+        a = np.array(quotient_term)
+        b = np.array(quotient)
+        quotient_term = np.concatenate((a,b[:,None]),axis=1)
+    
 
-    count_row = quotient_term_name.shape[0] 
-    for nn in range(1,count_row+1):
-        quotient = Xsymbol_Xdata[: ,quotient_term_name[nn,1]] / Xsymbol_Xdata[: ,quotient_term_name[nn,2]]
-        #combination quotient_term and quotient
-        dictOfquotient_term = pd.DataFrame(quotient_term) 
-        dictOfquotient_term[''] = quotient
-        quotient_term = dictOfquotient_term
-
-    quotient_term = quotient_term[ :,-1]
+    quotient_term = quotient_term[ : ,1:]
     #create name column
-    nameofQuotient_term = quotient_term.columns.values.tolist()
-    quotient_term = quotient_term.rename(columns ={nameofQuotient_term:"("+ quotient_term_name[: ,1]+"/"+ quotient_term_name[:, 2]+")"})
+    names = [] 
+    reshaped = quotient_term.reshape(len(Xsymbol_Xdata),count_row)
+    for n in range(0, count_row):
+        name = "/".join(str(x) for x in quotient_term_name[n])
+        names.append("("+name+")")
+    quotient_term =  pd.DataFrame(reshaped, columns=names)
     return(quotient_term)
 #======================== 二乗の項を作る =================================
 def make_square(Xsymbol_Xdata):
     X_symbol_name = Xsymbol_Xdata.columns.values.tolist()
-    dictOfNameXsymbol = pd.DataFrame(X_symbol_name) 
-    dictOfNameXsymbol[''] = Xsymbol_Xdata
-    square_term_name = dictOfNameXsymbol
-    square_term = [] 
-    # For input 
-    for i in range(Xsymbol_Xdata.shape[0]):          # A for loop for row entries 
-        a =[] 
-        # A for loop for column entries 
-        a.append(0) 
-        square_term.append(a) 
+    #combination
+    dictOfNameX_symbol_name = pd.DataFrame(X_symbol_name) 
+    dictOfNameX_symbol_name[''] = X_symbol_name
+    square_term_name = np.array(dictOfNameX_symbol_name)
+
+    # create matrix
+    row = len(Xsymbol_Xdata)
+    cloumn = 1
+    square_term = [0] * row
+    for x in range (row):
+        square_term[x] = [0] * cloumn
     
-   #FIXME: For printing the matrix was created for check if evrythinhs is okay gonna delete it
-    for i in range(Xsymbol_Xdata.shape[0]):  
-        print(square_term[i][1], end = " ") 
+    count_row = len(square_term_name) 
+    
+    for nn in range(0, count_row):
+        square = Xsymbol_Xdata.iloc[:, Xsymbol_Xdata.columns.get_loc(str(square_term_name[nn,0]))]*Xsymbol_Xdata.iloc[:, Xsymbol_Xdata.columns.get_loc(str(square_term_name[nn,1]))]
+        #combination product_term and product
+        a = np.array(square_term)
+        b = np.array(square)
+        square_term = np.concatenate((a,b[:,None]),axis=1)
 
-    count_row = square_term_name.shape[0]
-    for nn in range(1,count_row+1):
-        square = Xsymbol_Xdata[ :,square_term_name[nn,1]]*Xsymbol_Xdata[: ,square_term_name[nn,2]]
-        dictOfNamesquare_term = pd.DataFrame(square_term) 
-        dictOfNamesquare_term[''] = square
-        square_term = dictOfNamesquare_term
-
-    square_term = square_term[ :,-1]
+    square_term = square_term[ : ,1:]
     #create name column
-    nameofsquare_term = square_term.columns.values.tolist()
-    square_term = product_term.rename(columns ={nameofsquare_term:"("+square_term_name[:,1]+square_term_name[:, 2]+")"})
+    names = [] 
+    reshaped = square_term.reshape(len(Xsymbol_Xdata),count_row)
+    for n in range(0, count_row):
+        name = "".join(str(x) for x in square_term_name[n])
+        names.append("("+name+")")
+    square_term =  pd.DataFrame(reshaped, columns=names)
     return(square_term)
 #=========================== 指数の項を作る ================================
 #あとで
 #===========================　和の項を作る =================================
 def make_sum(Xsymbol_Xdata):
+    #find name of variable
     X_symbol_name = Xsymbol_Xdata.columns.values.tolist()
-    sum_term_name = combinations(X_symbol_name,2)
-    sum_term = [] 
-    # For input 
-    for i in range(Xsymbol_Xdata.shape[0]):          # A for loop for row entries 
-        a =[] 
-        # A for loop for column entries 
-        a.append(0) 
-        sum_term.append(a) 
-    
-    #FIXME: For printing the matrix was created for check if evrythinhs is okay gonna delete it
-    for i in range(Xsymbol_Xdata.shape[0]):  
-        print(sum_term[i][1], end = " ") 
+    sum_term_name = list(combinations(X_symbol_name, 2)) 
+    sum_term_name = np.array(sum_term_name)
+    # create matrix
+    row = len(Xsymbol_Xdata)
+    cloumn = 1
+    sum_term = [0] * row
+    for x in range (row):
+        sum_term[x] = [0] * cloumn
 
-    count_row = sum_term_name.shape[0]
-    for nn in range(1,count_row+1):
-        sum1 = Xsymbol_Xdata[: ,sum_term_name[nn,1]]+Xsymbol_Xdata[ :,sum_term_name[nn,2]]
-        dictOfNamesum_term = pd.DataFrame(sum_term) 
-        dictOfNamesum_term[''] = sum1
-        square_term = dictOfNamesum_term
-    sum_term = sum_term[: ,-1]
+    count_row = len(sum_term_name) 
+
+    for nn in range(0, count_row):
+        sum1 = Xsymbol_Xdata.iloc[:, Xsymbol_Xdata.columns.get_loc(str(sum_term_name[nn,0]))]+Xsymbol_Xdata.iloc[:, Xsymbol_Xdata.columns.get_loc(str(sum_term_name[nn,1]))]
+        #combination product_term and product
+        a = np.array(sum_term)
+        b = np.array(sum1)
+        sum_term = np.concatenate((a,b[:,None]),axis=1)
+    
+    sum_term = sum_term[ : ,1:]
     #create name column
-    nameofsum_term = sum_term.columns.values.tolist()
-    sum_term = sum_term.rename(columns ={nameofsum_term:"("+sum_term_name[ :,1]+"+" +sum_term_name[:, 2]+")"})
+    names = [] 
+    reshaped = sum_term.reshape(len(Xsymbol_Xdata),count_row)
+    for n in range(0, count_row):
+        name = "+".join(str(x) for x in sum_term_name[n])
+        names.append("("+name+")")
+    sum_term =  pd.DataFrame(reshaped, columns=names)
     return(sum_term)
 #=========================== 差の項を作る =================================
 def make_difference(Xsymbol_Xdata):
+    #find name of variable
     X_symbol_name = Xsymbol_Xdata.columns.values.tolist()
-    difference_term_name = permutations(X_symbol_name,2)
-    difference_term = []
+    difference_term_name = list(permutations(X_symbol_name, 2)) 
+    difference_term_name = np.array(difference_term_name)
+    # create matrix
+    row = len(Xsymbol_Xdata)
+    cloumn = 1
+    difference_term = [0] * row
+    for x in range (row):
+        difference_term[x] = [0] * cloumn
 
-    # For input 
-    for i in range(Xsymbol_Xdata.shape[0]):          # A for loop for row entries 
-        a =[] 
-        # A for loop for column entries 
-        a.append(0) 
-        difference_term.append(a) 
+    count_row = len(difference_term_name) 
+
+    for nn in range(0, count_row):
+        difference = Xsymbol_Xdata.iloc[:, Xsymbol_Xdata.columns.get_loc(str(difference_term_name[nn,0]))]-Xsymbol_Xdata.iloc[:, Xsymbol_Xdata.columns.get_loc(str(difference_term_name[nn,1]))]
+        #combination product_term and product
+        a = np.array(difference_term)
+        b = np.array(difference)
+        difference_term = np.concatenate((a,b[:,None]),axis=1)
     
-    #FIXME: For printing the matrix was created for check if evrythinhs is okay gonna delete it
-    for i in range(Xsymbol_Xdata.shape[0]):  
-        print(difference_term[i][1], end = " ") 
-
-    count_row = difference_term_name.shape[0]
-    for nn in range(1,count_row+1):
-        difference = Xsymbol_Xdata[ :,difference_term_name[nn,1]] - Xsymbol_Xdata[ :,difference_term_name[nn,2]]
-        dictOfNamedifference_term = pd.DataFrame(difference_term) 
-        dictOfNamedifference_term[''] = difference
-        square_term = dictOfNamedifference_term
-
-    difference_term = difference_term[ :,-1]
+    difference_term = difference_term[ : ,1:]
     #create name column
-    nameofdifference_term = difference_term.columns.values.tolist()
-    product_term = difference_term.rename(columns ={nameofdifference_term:"("+difference_term_name[: ,1]+"-"+ difference_term_name[:, 2]+ ")"})
+    names = [] 
+    reshaped = difference_term.reshape(len(Xsymbol_Xdata),count_row)
+    for n in range(0, count_row):
+        name = "-".join(str(x) for x in difference_term_name[n])
+        names.append("("+name+")")
+    difference_term =  pd.DataFrame(reshaped, columns=names)
     return(difference_term)
 #============================ penalty factorを作る =======================
 def make_penalty_factor(new_Xdata, Xsymbol_Xdata_original):
-    X_symbol_name = Xsymbol_Xdata.columns.values.tolist()
-    s = pd.Series(X_symbol_name)
-    #FIXME: this function not sure 
-    X_symbol_name_removed = s.str.extractall("X")
+    X_symbol_name = new_Xdata.columns.values.tolist()
     penalty_factor =[]
 
-    count_row = X_symbol_name_removed.shape[0]
-    for ii in range(1,count_row+1):
-        penalty_factor.append(len(X_symbol_name_removed[ii])) 
+    penalty_factor = np.char.count(X_symbol_name, sub ='X')  
+
     #ある一定以上の次数のpenaltyを極端に大きくする。とりあえず、Xsymbol_Xdata_originalの項数+2を閾値としてデフォルトにしている。
     #the penalty factors areinternally rescaled to sum to nvars
     #つまり各penalty.factorは内部で規格化される、規格化されたpenalty.factor = （各penalty.factorの値 * 項の数 / 全部のpenalty.factorの値の和）
     #penalty_factor = replace(penalty_factor, (penalty_factor > ncol(Xsymbol_Xdata_original)+1),100)
     #penalty_factor = replace(penalty_factor, (penalty_factor <= ncol(Xsymbol_Xdata_original)+1),1)
     #もしくは、自分で指定する（今は4）
-    #FIXME: this function not sure 
-    penalty_factor = penalty_factor.replace(penalty_factor> 4,100)
-    penalty_factor = penalty_factor.replace(penalty_factor<= 4,1)
+    penalty_factor = np.array(penalty_factor)
+    penalty_factor = np.where(penalty_factor > 4, 100, penalty_factor) 
+    penalty_factor = np.where(penalty_factor <= 4, 1, penalty_factor) 
+   
     return(penalty_factor)
 #========================== 標準化した回帰係数を計算するfunction =================
 def make_std_coefficient(model, Xdata):
@@ -237,6 +253,13 @@ def nom(X, x_min, x_max):
             denom[denom==0] = 1
             return x_min + nom/denom 
 #========================================================================
+def nb(y=1930):
+    debut = 1816
+    MatDFemale = matrix(D . Female, nrow=111)
+    colnames(MatDFemale) .set(range((debut + 0), 198))
+    cly = range((y - debut + 1), 111)
+    deces = diag(MatDFemale[:, cly[set(cly) & set(range(1, 199))]])
+    return tuple(B . Female[B . Year == y], deces)
 #====== non-linear reccurent adaptive interpretable regression (NRAI regression) ======
 
 #------------------ input parameter -------------------------------------
@@ -278,7 +301,7 @@ if __name__ == "__main__":
     # #for (pp in 1:ncol(X_Y))　#全部試すときはこっち
     # #X5をYにする時だけ
     # print(X_Y)
-    for pp in range(X_Y.shape[1]-1,X_Y.shape[1]+1): 
+    for pp in range(X_Y.shape[1]-1,X_Y.shape[1]): 
         #TODO:
         Ydata = X_Y.iloc[:,pp]
         Ydata = pd.DataFrame(Ydata)
@@ -290,56 +313,93 @@ if __name__ == "__main__":
             for ii in range(0,rrr+1):
                 #積と商と和と差と二乗と指数の項を作成する
                 product_term = make_product(Xsymbol_Xdata)
-                print(product_term)
-                #quotient_term = make_quotient(Xsymbol_Xdata)
-                # print(quotient_term)
-                #square_term = make_square(Xsymbol_Xdata)
-                # print(square_term)
-                #sum_term = make_sum(Xsymbol_Xdata)
-                # print(sum_term)
-                #difference_term = make_difference(Xsymbol_Xdata)
-                # print(difference_term)
-                #new_Xdata = []
+                quotient_term = make_quotient(Xsymbol_Xdata)
+                square_term = make_square(Xsymbol_Xdata)
+                sum_term = make_sum(Xsymbol_Xdata)
+                difference_term = make_difference(Xsymbol_Xdata)
                 
-    #             #TODO: newdata
+                #name of each columns
+                nameofXsymbol_Xdata = Xsymbol_Xdata.columns.values.tolist()
+                lenghtOfXsymbol_Xdata = len(Xsymbol_Xdata.columns.values.tolist())
+                nameofproduct_term = product_term.columns.values.tolist()
+                nameofquotient_term = quotient_term.columns.values.tolist()
+                nameofsquare_term = square_term.columns.values.tolist()
+                nameofsum_term = sum_term.columns.values.tolist()
+                nameofdifference_term = difference_term.columns.values.tolist()
 
+                # table to array
+                arrayXsymbol_Xdata = np.array(Xsymbol_Xdata)
+                product_term = np.array(product_term)
+                quotient_term = np.array(quotient_term)
+                square_term = np.array(square_term)
+                sum_term = np.array(sum_term)
+                difference_term = np.array(difference_term)
 
-    #             #NAやNaNやInfがたまに出てくるので、それが含まれる列を除去
-    #             #TODO: cut NA NaN Inf
+                # add product_term
+                for each in nameofproduct_term:
+                    nameofXsymbol_Xdata.append(each)
 
-    #             #全く同じ項が選ばれることがあるので、その場合は片方を除去
-    #             #TODO: delete duplicate
+                nametotal = nameofXsymbol_Xdata
+                new_Xdata = np.concatenate((arrayXsymbol_Xdata,product_term),axis=1)
+                reshaped = new_Xdata.reshape(len(arrayXsymbol_Xdata),len(nametotal))
+                new_Xdata =  pd.DataFrame(reshaped, columns=nametotal)
 
-    #             #履歴をプリント
-    #             #TODO: record history
+                # 1st add quotient
+                for each in nameofquotient_term:
+                    nameofXsymbol_Xdata.append(each)
 
-    #             #penalty.factorを作る。次数（項の名前に入っているXの数）が大きい項は選ばれにくくなるようにする。
-    #             #TODO: from 321 - 349
+                nametotal = nameofXsymbol_Xdata
+                new_Xdata = np.concatenate((new_Xdata,quotient_term),axis=1)
+                reshaped = new_Xdata.reshape(len(product_term),len(nametotal))
+                new_Xdata =  pd.DataFrame(reshaped, columns=nametotal)
 
-    #             #標準化係数でピックアップしたデータのみを使用して再度LASSO
-    #             #cl = makeCluster(4)  #10コアで並列化開始
-    #             #registerDoParallel(cl)  
-    #             #cross validation
-    #             #fitLassoCV1 = cv.glmnet(x = as.matrix(std_selected_term_data), y = as.matrix(Ydata), family ="gaussian", alpha = 1
-    #                 #    	    ,nfolds = 10, parallel=TRUE, standardize = TRUE, penalty.factor=penalty_factor
-    #                     #          ,thresh = 1E-7, maxit = 10^5, nlambda = 1000, intercept=FALSE, lambda.min.ratio = 0.00000001
-    #             #          ,lambda = 2^(-40:5) )
-    #             #stopCluster(cl)  #並列化おしまい
+                #2nd add square
+                for each in nameofsquare_term:
+                    nameofXsymbol_Xdata.append(each)
 
-    #             #coefficient = coef(fitLassoCV1, s="lambda.min") #たくさん選ばれるように1seは使わない
-    #             #coefficient = as.matrix(coefficient)
-    #             #coefficient = coefficient[coefficient !=0,]
-    #             #used_term_name = names(coefficient)
-    #             #used_term_name = used_term_name[-which(used_term_name %in% "(Intercept)")] #intercept入れてるときはこれも入れる
-    #             #used_term_data = as.matrix(std_selected_term_data[ ,used_term_name])
-    #             #used_term_data = as.matrix(new_Xdata[ ,used_term_name])
-    #             #colnames(used_term_data) = used_term_name ##
+                nametotal = nameofXsymbol_Xdata
+                new_Xdata = np.concatenate((new_Xdata,square_term),axis=1)
+                reshaped =  new_Xdata.reshape(len(new_Xdata),len(nametotal))
+                new_Xdata =  pd.DataFrame(reshaped, columns=nametotal)
 
-    #             #履歴をプリント
-    #             #TODO: record history
-    #             #TODO: from 371 - 460
+                #3rd add square
+                for each in nameofsum_term:
+                    nameofXsymbol_Xdata.append(each)
 
-    #             #一番cv誤差が小さかったモデルを記録
-                
-    # #一番良かったモデルの標準化係数を計算
-    # std_coef_final = make_std_coefficient(best_model, best_model_x_selected)
+                nametotal = nameofXsymbol_Xdata
+                new_Xdata = np.concatenate((new_Xdata,sum_term),axis=1)
+                reshaped =  new_Xdata.reshape(len(new_Xdata),len(nametotal))
+                new_Xdata =  pd.DataFrame(reshaped, columns=nametotal) 
+
+                #4th add difference_term
+                for each in nameofdifference_term:
+                    nameofXsymbol_Xdata.append(each)
+
+                nametotal = nameofXsymbol_Xdata
+                new_Xdata = np.concatenate((new_Xdata,difference_term),axis=1)
+                reshaped =  new_Xdata.reshape(len(new_Xdata),len(nametotal))
+                new_Xdata =  pd.DataFrame(reshaped, columns=nametotal) 
+              
+                #find string and delete column
+                new_Xdata.drop(columns=new_Xdata.columns[(new_Xdata == 'Inf').any()])
+                new_Xdata.drop(columns=new_Xdata.columns[(new_Xdata == 'NA').any()])
+                new_Xdata.drop(columns=new_Xdata.columns[(new_Xdata == 'NaN').any()])
+
+                #TODO: for unique
+
+                moji = "pp "+str(pp+1)+" nn "+str(nn)+" ii "+str(ii)
+                print(moji)
+                moji = "number of Xsymbol_Xdata "+ str(lenghtOfXsymbol_Xdata)
+                print(moji)
+                moji = "number of new_Xdata "+ str(len(nametotal))
+                print(moji)
+
+                penalty_factor = make_penalty_factor(new_Xdata, Xsymbol_Xdata_original)
+
+                #標準化係数でピックアップしたデータのみを使用して再度LASSO
+               
+                #cross validation
+                fitLassoCV1 = glmnet(x = np.array(new_Xdata), y = np.array(Ydata), family = 'gaussian', 
+                                     alpha = 1, nlambda = 1000)
+                glmnetPrint(fit)
+

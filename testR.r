@@ -72,7 +72,6 @@ make_product = function(Xsymbol_Xdata)
     product = Xsymbol_Xdata[ ,product_term_name[nn,1]]*Xsymbol_Xdata[ ,product_term_name[nn,2]]
     
     product_term = cbind(product_term, product)
-    print(product_term)
   
   }
   
@@ -91,7 +90,6 @@ make_quotient = function(Xsymbol_Xdata)
   X_symbol_name = colnames(Xsymbol_Xdata)
   
   quotient_term_name = permutations(n=ncol(Xsymbol_Xdata), r=2, X_symbol_name, repeats.allowed = F)
-  
   quotient_term = matrix(0, ncol=1, nrow=nrow(Xsymbol_Xdata))
   
   for (nn in 1:nrow(quotient_term_name))
@@ -104,7 +102,6 @@ make_quotient = function(Xsymbol_Xdata)
   
   quotient_term = quotient_term[ ,-1]
   colnames(quotient_term)=paste("(", quotient_term_name[ ,1],"/", quotient_term_name[, 2], ")" , sep ="")
-  
   return(quotient_term)
   
 }
@@ -197,14 +194,13 @@ make_penalty_factor = function(new_Xdata, Xsymbol_Xdata_original)
 {
   X_symbol_name = colnames(new_Xdata)
   X_symbol_name_removed = str_extract_all(X_symbol_name, pattern="X", simplify=FALSE)
-  
   penalty_factor = c()
+  print(length(X_symbol_name_removed))
   for (ii in 1:length(X_symbol_name_removed))
   {
     penalty_factor = c(penalty_factor, length(X_symbol_name_removed[[ii]]))
   }
-  
-  
+
   #ある一定以上の次数のpenaltyを極端に大きくする。とりあえず、Xsymbol_Xdata_originalの項数+2を閾値としてデフォルトにしている。
   #the penalty factors areinternally rescaled to sum to nvars
   #つまり各penalty.factorは内部で規格化される、規格化されたpenalty.factor = （各penalty.factorの値 * 項の数 / 全部のpenalty.factorの値の和）
@@ -213,7 +209,7 @@ make_penalty_factor = function(new_Xdata, Xsymbol_Xdata_original)
   #もしくは、自分で指定する（今は4）
   penalty_factor = replace(penalty_factor, (penalty_factor > 4),100)
   penalty_factor = replace(penalty_factor, (penalty_factor <= 4),1)
-  
+
   return(penalty_factor)
   
 }
@@ -271,11 +267,67 @@ error_record = c()
 summary_data = matrix(0, nrow=1, ncol=max_pmax)
 
 i_error = 10000  #誤差の初期値　大きめに取っておけば問題ない
-#X_YのデータをXとYに分ける。それを網羅的にやる
 
-Ydata = X_Y[ ,8,drop=FALSE]
-Ydata = normalize(Ydata, method="range", range=c(0,1))
-Xsymbol_Xdata = X_Y[, -8 , drop=FALSE]
-Xsymbol_Xdata_original = Xsymbol_Xdata
+#X_YのデータをXとYに分ける。それを網羅的にやる
+#for (pp in 1:ncol(X_Y))　#全部試すときはこっち
+for (pp in ncol(X_Y):ncol(X_Y)) #X5をYにする時だけ
+{
+  Ydata = X_Y[ ,pp,drop=FALSE]
+  Ydata = normalize(Ydata, method="range", range=c(0,1))
+  Xsymbol_Xdata = X_Y[, -pp , drop=FALSE]
+  Xsymbol_Xdata_original = Xsymbol_Xdata
   
-product_term = make_product(Xsymbol_Xdata)
+  for (nn in 1:nnn)
+  {
+    
+    for (ii in 1:rrr) #lambdaの下限を指定してだんだん選ばれる項の数を減らす 
+    {
+      
+      #積と商と和と差と二乗と指数の項を作成する
+      product_term = make_product(Xsymbol_Xdata)
+      quotient_term = make_quotient(Xsymbol_Xdata)
+      square_term = make_square(Xsymbol_Xdata)
+      sum_term = make_sum(Xsymbol_Xdata)
+      difference_term = make_difference(Xsymbol_Xdata)
+      new_Xdata = cbind(Xsymbol_Xdata, product_term, quotient_term, square_term, sum_term, difference_term)
+      
+      #NAやNaNやInfがたまに出てくるので、それが含まれる列を除去
+      new_Xdata[!grepl("Inf", new_Xdata)]
+      new_Xdata[!grepl("NA", new_Xdata)]
+      new_Xdata[!grepl("NaN", new_Xdata)]
+      
+      #全く同じ項が選ばれることがあるので、その場合は片方を除去
+      new_Xdata = t(new_Xdata)
+      new_Xdata = unique(new_Xdata)
+      new_Xdata = t(new_Xdata)
+      
+      #履歴をプリント
+      moji = paste("pp", pp, "nn", nn, "ii", ii, sep=" ")
+      print(moji) 
+      moji = paste("number of Xsymbol_Xdata", ncol(Xsymbol_Xdata), sep=" ")
+      print(moji)
+      moji = paste("number of new_Xdata", ncol(new_Xdata), sep=" ")
+      print(moji)
+
+      #penalty.factorを作る。次数（項の名前に入っているXの数）が大きい項は選ばれにくくなるようにする。
+      penalty_factor = make_penalty_factor(new_Xdata, Xsymbol_Xdata_original)
+      
+      cl = makeCluster(4)  #10コアで並列化開始
+      registerDoParallel(cl)  
+      #cross validation
+      fitLassoCV1 = cv.glmnet(x = as.matrix(new_Xdata), y = as.matrix(Ydata), family ="gaussian", alpha = 1
+                              ,nfolds = 5, parallel=TRUE, standardize = TRUE, penalty.factor=penalty_factor
+                              ,thresh = 1E-7, maxit = 10^5, nlambda = 1000, intercept=FALSE, lambda.min.ratio = 0.00000001
+                              ,lambda = 2^(-40:5) )
+      stopCluster(cl)  #並列化おしまい
+      print(fitLassoCV1)
+      coefficient = coef(fitLassoCV1, s="lambda.min") #たくさん選ばれるように1seは使わない
+      coefficient = as.matrix(coefficient)
+      coefficient = coefficient[coefficient !=0,]
+      #print(coefficient)
+      used_term_name = names(coefficient)
+      #print(used_term_name)
+    }
+  }
+}
+
